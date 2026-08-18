@@ -1,0 +1,25 @@
+# Virtual environment
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Environment variables
+.env
+
+# Raw Gazette PDFs
+data/raw/gazettes/
+
+# Generated extracted text
+data/raw/text/
+
+# OCR output
+data/raw/ocr/
+
+# Generated structured data
+data/processed/
