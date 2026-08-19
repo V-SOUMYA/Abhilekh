@@ -1,67 +1,15 @@
 import time
 from pathlib import Path
 
-import cv2
 import fitz
 import numpy as np
 import pytesseract
 from PIL import Image
 
+from src.preprocessing.image_preprocessing import preprocess_image
+
 
 PDF_DIR = Path("data/raw/gazettes")
-
-
-def preprocess_image(image):
-    """
-    CPU-based image preprocessing for OCR.
-
-    Steps:
-    1. Convert to grayscale
-    2. Denoise
-    3. Improve contrast
-    4. Apply adaptive thresholding
-    """
-
-    # PIL/NumPy RGB image -> OpenCV BGR
-    image = cv2.cvtColor(
-        image,
-        cv2.COLOR_RGB2BGR
-    )
-
-    # 1. Grayscale
-    gray = cv2.cvtColor(
-        image,
-        cv2.COLOR_BGR2GRAY
-    )
-
-    # 2. Denoising
-    denoised = cv2.fastNlMeansDenoising(
-        gray,
-        None,
-        10,
-        7,
-        21
-    )
-
-    # 3. Contrast enhancement
-    clahe = cv2.createCLAHE(
-        clipLimit=2.0,
-        tileGridSize=(8, 8)
-    )
-
-    enhanced = clahe.apply(denoised)
-
-    # 4. Adaptive thresholding
-    thresholded = cv2.adaptiveThreshold(
-        enhanced,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        31,
-        11
-    )
-
-    return thresholded
 
 
 def benchmark_preprocessing(pdf_name):
@@ -85,7 +33,6 @@ def benchmark_preprocessing(pdf_name):
         # -------------------------
         # Rendering
         # -------------------------
-
         start = time.perf_counter()
 
         pix = page.get_pixmap(
@@ -102,17 +49,13 @@ def benchmark_preprocessing(pdf_name):
         render_time = time.perf_counter() - start
         total_render_time += render_time
 
-        # Convert PIL image to NumPy
-        image_array = np.array(image)
-
         # -------------------------
         # CPU preprocessing
         # -------------------------
-
         start = time.perf_counter()
 
         processed = preprocess_image(
-            image_array
+            np.array(image)
         )
 
         preprocessing_time = time.perf_counter() - start
@@ -121,7 +64,6 @@ def benchmark_preprocessing(pdf_name):
         # -------------------------
         # OCR
         # -------------------------
-
         start = time.perf_counter()
 
         text = pytesseract.image_to_string(
@@ -147,16 +89,12 @@ def benchmark_preprocessing(pdf_name):
     # -------------------------
     # Save OCR output
     # -------------------------
-
     output_dir = Path("data/raw/ocr")
-    output_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = (
-        output_dir /
-        f"{Path(pdf_name).stem}_preprocessed.txt"
+        output_dir
+        / f"{Path(pdf_name).stem}_preprocessed.txt"
     )
 
     output_path.write_text(
@@ -167,7 +105,6 @@ def benchmark_preprocessing(pdf_name):
     # -------------------------
     # Summary
     # -------------------------
-
     total_time = (
         total_render_time
         + total_preprocessing_time
@@ -184,6 +121,7 @@ def benchmark_preprocessing(pdf_name):
     print(f"OCR time:             {total_ocr_time:.3f}s")
     print(f"Total processing:     {total_time:.3f}s")
     print(f"Average/page:         {total_time / len(doc):.3f}s")
+
     print(f"\nSaved OCR output to:  {output_path}")
 
 
