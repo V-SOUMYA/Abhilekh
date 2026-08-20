@@ -1,14 +1,18 @@
 import time
+import difflib
 from pathlib import Path
 
 import fitz
 import cv2
 import numpy as np
 import pytesseract
-from PIL import Image
 
 
 PDF_DIR = Path("data/raw/gazettes")
+TEXT_DIR = Path("data/raw/text")
+OCR_DIR = Path("data/raw/ocr")
+ABLATION_DIR = OCR_DIR / "ablation"
+
 PDF_ID = "275564"
 
 
@@ -25,7 +29,7 @@ def render_page(page):
 
 
 # ---------------------------------------------------------
-# PREPROCESSING OPERATIONS
+# PREPROCESSING METHODS
 # ---------------------------------------------------------
 
 def baseline(image):
@@ -101,10 +105,6 @@ def full_preprocessing(image):
     )
 
 
-# ---------------------------------------------------------
-# EXPERIMENT
-# ---------------------------------------------------------
-
 METHODS = {
     "baseline": baseline,
     "grayscale": grayscale,
@@ -115,11 +115,48 @@ METHODS = {
 }
 
 
+# ---------------------------------------------------------
+# SIMILARITY METRICS
+# ---------------------------------------------------------
+
+def character_similarity(reference, candidate):
+    return difflib.SequenceMatcher(
+        None,
+        reference,
+        candidate
+    ).ratio()
+
+
+def word_similarity(reference, candidate):
+    reference_words = reference.split()
+    candidate_words = candidate.split()
+
+    return difflib.SequenceMatcher(
+        None,
+        reference_words,
+        candidate_words
+    ).ratio()
+
+
+# ---------------------------------------------------------
+# EXPERIMENT
+# ---------------------------------------------------------
+
 def run_experiment():
 
     pdf_path = PDF_DIR / f"{PDF_ID}.pdf"
+    reference_path = TEXT_DIR / f"{PDF_ID}.txt"
+
+    reference = reference_path.read_text(
+        encoding="utf-8"
+    )
 
     doc = fitz.open(pdf_path)
+
+    ABLATION_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     print("=" * 70)
     print(f"PREPROCESSING ABLATION: {PDF_ID}")
@@ -133,7 +170,7 @@ def run_experiment():
 
         total_preprocessing = 0
         total_ocr = 0
-        total_chars = 0
+        all_text = []
 
         print("-" * 70)
         print(f"METHOD: {method_name}")
@@ -174,7 +211,10 @@ def run_experiment():
             ocr_time = time.perf_counter() - start
 
             total_ocr += ocr_time
-            total_chars += len(text)
+
+            all_text.append(
+                f"\n===== PAGE {page_number} =====\n\n{text}"
+            )
 
             print(
                 f"Page {page_number}/{len(doc)}: "
@@ -183,49 +223,96 @@ def run_experiment():
                 f"chars={len(text)}"
             )
 
+        # -------------------------
+        # Save OCR output
+        # -------------------------
+
+        output_path = (
+            ABLATION_DIR
+            / f"{PDF_ID}_{method_name}.txt"
+        )
+
+        candidate = "\n".join(all_text)
+
+        output_path.write_text(
+            candidate,
+            encoding="utf-8"
+        )
+
+        # -------------------------
+        # Accuracy
+        # -------------------------
+
+        char_similarity = character_similarity(
+            reference,
+            candidate
+        )
+
+        word_similarity_value = word_similarity(
+            reference,
+            candidate
+        )
+
         total_time = (
-            total_preprocessing +
-            total_ocr
+            total_preprocessing
+            + total_ocr
         )
 
         results[method_name] = {
             "preprocessing": total_preprocessing,
             "ocr": total_ocr,
             "total": total_time,
-            "chars": total_chars,
+            "chars": len(candidate),
+            "char_similarity": char_similarity,
+            "word_similarity": word_similarity_value,
         }
 
         print(
             f"Total preprocessing: {total_preprocessing:.3f}s"
         )
+
         print(
             f"Total OCR:           {total_ocr:.3f}s"
         )
+
         print(
             f"Total time:          {total_time:.3f}s"
         )
+
         print(
-            f"Total characters:    {total_chars}"
+            f"Character similarity: "
+            f"{char_similarity * 100:.2f}%"
         )
+
+        print(
+            f"Word similarity:      "
+            f"{word_similarity_value * 100:.2f}%"
+        )
+
+        print(
+            f"Saved to:             {output_path}"
+        )
+
         print()
 
     # -----------------------------------------------------
     # SUMMARY
     # -----------------------------------------------------
 
-    print("=" * 70)
-    print("SUMMARY")
-    print("=" * 70)
+    print("=" * 100)
+    print("FINAL SUMMARY")
+    print("=" * 100)
 
     print(
         f"{'Method':<25}"
         f"{'Prep(s)':>10}"
         f"{'OCR(s)':>10}"
-        f"{'Total(s)':>12}"
-        f"{'Chars':>10}"
+        f"{'Total(s)':>11}"
+        f"{'Char Sim':>12}"
+        f"{'Word Sim':>12}"
     )
 
-    print("-" * 70)
+    print("-" * 100)
 
     for method_name, result in results.items():
 
@@ -233,8 +320,9 @@ def run_experiment():
             f"{method_name:<25}"
             f"{result['preprocessing']:>10.3f}"
             f"{result['ocr']:>10.3f}"
-            f"{result['total']:>12.3f}"
-            f"{result['chars']:>10}"
+            f"{result['total']:>11.3f}"
+            f"{result['char_similarity'] * 100:>11.2f}%"
+            f"{result['word_similarity'] * 100:>11.2f}%"
         )
 
 
